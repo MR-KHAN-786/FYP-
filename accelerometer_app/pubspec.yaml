@@ -40,7 +40,9 @@ dependencies:
   geolocator: ^13.0.2
   csv: ^6.0.0
   flutter_aws_s3_client: ^0.6.0
-  path_provider: ^2.0.9 
+  path_provider: ^2.1.5 
+  file_picker: ^9.2.1
+  permission_handler: ^10.4.4
 
 dev_dependencies:
   flutter_test:

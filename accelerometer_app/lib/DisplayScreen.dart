@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:csv/csv.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:accelerometer/accelerometer.dart';
 import 'package:accelerometer/location.dart';
-import 'package:flutter/material.dart';
 
 class DisplayScreen extends StatefulWidget {
   @override
@@ -16,8 +20,14 @@ class _DisplayScreenState extends State<DisplayScreen> {
   double longitude = 0.0;
   double x = 0.0, y = 0.0, z = 0.0;
   bool isRunning = false;
+  Timer? _recordingTimer;
   StreamSubscription? _locationSubscription;
   StreamSubscription? _accelerometerSubscription;
+
+  // CSV header with a timestamp column.
+  List<List<dynamic>> _csvData = [
+    ['Timestamp', 'Latitude', 'Longitude', 'X', 'Y', 'Z']
+  ];
 
   @override
   void initState() {
@@ -26,48 +36,117 @@ class _DisplayScreenState extends State<DisplayScreen> {
     _accelerometerCalculator = AccelerometerCalculator();
   }
 
- void _start() {
-  if (isRunning) return; // Prevent starting again if already running
+  Future<bool> _requestStoragePermission() async {
+    var status = await Permission.storage.status;
+    if (!status.isGranted) {
+      status = await Permission.storage.request();
+    }
+    return status.isGranted;
+  }
 
-  setState(() {
-    isRunning = true;
-  });
-
-  // Initialize location subscription
-  _locationSubscription =
-      _locationCalculator.locationStream.listen((position) {
+  void _start() {
+    if (isRunning) return;
     setState(() {
-      latitude = position.latitude;
-      longitude = position.longitude;
+      isRunning = true;
     });
-  });
 
-  // Initialize accelerometer subscription
-  _accelerometerSubscription =
-      _accelerometerCalculator.accelerometerStream.listen((event) {
+    // Subscribe to location updates to update latest values (without recording).
+    _locationSubscription = _locationCalculator.locationStream.listen((position) {
+      setState(() {
+        latitude = position.latitude;
+        longitude = position.longitude;
+      });
+    });
+
+    // Subscribe to accelerometer updates to update latest values (without recording).
+    _accelerometerSubscription = _accelerometerCalculator.accelerometerStream.listen((event) {
+      setState(() {
+        x = event.x;
+        y = event.y;
+        z = event.z;
+      });
+    });
+
+    // Start a periodic timer that records the current sensor values every 200ms (5 times per second).
+    _recordingTimer = Timer.periodic(Duration(milliseconds: 1000), (Timer timer) {
+      _addDataToCsv();
+    });
+  }
+
+  void _stop() {
+    if (!isRunning) return;
     setState(() {
-      x = event.x;
-      y = event.y;
-      z = event.z;
+      isRunning = false;
     });
-  });
-}
 
-void _stop() {
-  if (!isRunning) return; // Prevent stopping if already stopped
+    _locationSubscription?.cancel();
+    _accelerometerSubscription?.cancel();
+    _recordingTimer?.cancel();
+    _locationSubscription = null;
+    _accelerometerSubscription = null;
+    _recordingTimer = null;
 
-  setState(() {
-    isRunning = false;
-  });
+    _saveCsv();
+  }
 
-  // Cancel subscriptions
-  _locationSubscription?.cancel();
-  _accelerometerSubscription?.cancel();
-  _locationSubscription = null;
-  _accelerometerSubscription = null;
+  // Record a row with the current sensor values and timestamp.
+  void _addDataToCsv() {
+    String timestamp = DateTime.now().toIso8601String();
+    _csvData.add([timestamp, latitude, longitude, x, y, z]);
+  }
 
-  // Do not reset displayed values
-}
+  Future<void> _saveCsv() async {
+    try {
+      bool hasPermission = await _requestStoragePermission();
+      if (!hasPermission) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Storage permission not granted.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unable to get storage directory.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final path = directory.path;
+      // Create a unique file name using a timestamp.
+      final fileTimestamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File('$path/sensor_data_$fileTimestamp.csv');
+
+      String csv = const ListToCsvConverter().convert(_csvData);
+      await file.writeAsString(csv);
+
+      // Reset CSV data for the next session (include header row).
+      _csvData = [
+        ['Timestamp', 'Latitude', 'Longitude', 'X', 'Y', 'Z']
+      ];
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('CSV file saved to ${file.path}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save CSV file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -75,6 +154,7 @@ void _stop() {
     _accelerometerCalculator.dispose();
     _locationSubscription?.cancel();
     _accelerometerSubscription?.cancel();
+    _recordingTimer?.cancel();
     super.dispose();
   }
 
@@ -85,7 +165,7 @@ void _stop() {
       appBar: AppBar(
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
-          child: Image.asset('assets/logo.png'), // Replace with your logo asset path
+          child: Image.asset('assets/logo.png'),
         ),
         title: const Text(
           "Road Pavement App",
@@ -108,7 +188,6 @@ void _stop() {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Location Card
                 _buildInfoCard(
                   title: "Location",
                   content: [
@@ -119,7 +198,6 @@ void _stop() {
                   iconColor: Colors.green,
                 ),
                 const SizedBox(height: 20),
-                // Accelerometer Card
                 _buildInfoCard(
                   title: "Accelerometer",
                   content: [
@@ -131,7 +209,6 @@ void _stop() {
                   iconColor: Colors.orange,
                 ),
                 const SizedBox(height: 30),
-                // Start/Stop Button
                 ElevatedButton(
                   onPressed: isRunning ? _stop : _start,
                   style: ElevatedButton.styleFrom(
@@ -139,8 +216,7 @@ void _stop() {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 50, vertical: 15),
+                    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
                   ),
                   child: Text(
                     isRunning ? "Stop" : "Start",
@@ -171,33 +247,25 @@ void _stop() {
         padding: const EdgeInsets.all(15.0),
         child: Row(
           children: [
-            Icon(
-              icon,
-              color: iconColor,
-              size: 40,
-            ),
+            Icon(icon, color: iconColor, size: 40),
             const SizedBox(width: 20),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+                  Text(title,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      )),
                   const SizedBox(height: 10),
                   for (var line in content)
-                    Text(
-                      line,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        color: Colors.white70,
-                      ),
-                    ),
+                    Text(line,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.white70,
+                        )),
                 ],
               ),
             ),

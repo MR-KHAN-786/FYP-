@@ -6,6 +6,7 @@ void main() {
   runApp(AccelerometerApp());
 }
 
+
 class AccelerometerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
