@@ -43,6 +43,9 @@ dependencies:
   path_provider: ^2.1.5 
   file_picker: ^9.2.1
   permission_handler: ^10.4.4
+  amplify_flutter: ^1.0.0
+  amplify_storage_s3: ^1.0.0
+  amplify_auth_cognito: ^1.0.0
 
 dev_dependencies:
   flutter_test:

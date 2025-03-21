@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:accelerometer/accelerometer.dart';
 import 'package:accelerometer/location.dart';
+import 'package:amplify_flutter/amplify_flutter.dart';
 
 class DisplayScreen extends StatefulWidget {
   @override
@@ -24,7 +25,6 @@ class _DisplayScreenState extends State<DisplayScreen> {
   StreamSubscription? _locationSubscription;
   StreamSubscription? _accelerometerSubscription;
 
-  // CSV header with a timestamp column.
   List<List<dynamic>> _csvData = [
     ['Timestamp', 'Latitude', 'Longitude', 'X', 'Y', 'Z']
   ];
@@ -50,7 +50,6 @@ class _DisplayScreenState extends State<DisplayScreen> {
       isRunning = true;
     });
 
-    // Subscribe to location updates to update latest values (without recording).
     _locationSubscription = _locationCalculator.locationStream.listen((position) {
       setState(() {
         latitude = position.latitude;
@@ -58,7 +57,6 @@ class _DisplayScreenState extends State<DisplayScreen> {
       });
     });
 
-    // Subscribe to accelerometer updates to update latest values (without recording).
     _accelerometerSubscription = _accelerometerCalculator.accelerometerStream.listen((event) {
       setState(() {
         x = event.x;
@@ -67,8 +65,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
       });
     });
 
-    // Start a periodic timer that records the current sensor values every 200ms (5 times per second).
-    _recordingTimer = Timer.periodic(Duration(milliseconds: 1000), (Timer timer) {
+    _recordingTimer = Timer.periodic(Duration(milliseconds: 200), (Timer timer) {
       _addDataToCsv();
     });
   }
@@ -89,7 +86,6 @@ class _DisplayScreenState extends State<DisplayScreen> {
     _saveCsv();
   }
 
-  // Record a row with the current sensor values and timestamp.
   void _addDataToCsv() {
     String timestamp = DateTime.now().toIso8601String();
     _csvData.add([timestamp, latitude, longitude, x, y, z]);
@@ -100,10 +96,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
       bool hasPermission = await _requestStoragePermission();
       if (!hasPermission) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Storage permission not granted.'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Storage permission not granted.'), backgroundColor: Colors.red),
         );
         return;
       }
@@ -111,39 +104,55 @@ class _DisplayScreenState extends State<DisplayScreen> {
       final directory = await getExternalStorageDirectory();
       if (directory == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unable to get storage directory.'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Unable to get storage directory.'), backgroundColor: Colors.red),
         );
         return;
       }
 
       final path = directory.path;
-      // Create a unique file name using a timestamp.
       final fileTimestamp = DateTime.now().millisecondsSinceEpoch;
       final file = File('$path/sensor_data_$fileTimestamp.csv');
 
       String csv = const ListToCsvConverter().convert(_csvData);
       await file.writeAsString(csv);
 
-      // Reset CSV data for the next session (include header row).
-      _csvData = [
-        ['Timestamp', 'Latitude', 'Longitude', 'X', 'Y', 'Z']
-      ];
+      _csvData = [['Timestamp', 'Latitude', 'Longitude', 'X', 'Y', 'Z']];
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('CSV file saved to ${file.path}'), backgroundColor: Colors.green),
+      );
+
+      await _uploadFileToS3(file);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save CSV file: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _uploadFileToS3(File file) async {
+    try {
+      final key = 'uploads/sensor_data_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final operation = Amplify.Storage.uploadFile(
+        localFile: AWSFile.fromPath(file.path), // Use fromPath instead of fromFile
+        key: key,
+        onProgress: (progress) {
+          final fractionCompleted = progress.transferredBytes / progress.totalBytes;
+          print('Upload progress: $fractionCompleted');
+        },
+      );
+
+      await operation.result; // Await the upload completion
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('CSV file saved to ${file.path}'),
+          content: Text('File uploaded to S3: $key'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to save CSV file: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -167,10 +176,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
           padding: const EdgeInsets.all(8.0),
           child: Image.asset('assets/logo.png'),
         ),
-        title: const Text(
-          "Road Pavement App",
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text("Road Pavement App", style: TextStyle(color: Colors.white)),
         centerTitle: true,
         backgroundColor: Colors.teal,
       ),
@@ -190,10 +196,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
               children: [
                 _buildInfoCard(
                   title: "Location",
-                  content: [
-                    "Latitude: $latitude",
-                    "Longitude: $longitude",
-                  ],
+                  content: ["Latitude: $latitude", "Longitude: $longitude"],
                   icon: Icons.location_on,
                   iconColor: Colors.green,
                 ),
@@ -213,9 +216,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
                   onPressed: isRunning ? _stop : _start,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isRunning ? Colors.red : Colors.blue,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                     padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
                   ),
                   child: Text(
@@ -238,9 +239,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
     required Color iconColor,
   }) {
     return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       elevation: 10,
       color: Colors.white.withOpacity(0.1),
       child: Padding(
@@ -255,17 +254,10 @@ class _DisplayScreenState extends State<DisplayScreen> {
                 children: [
                   Text(title,
                       style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      )),
+                          fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(height: 10),
                   for (var line in content)
-                    Text(line,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          color: Colors.white70,
-                        )),
+                    Text(line, style: const TextStyle(fontSize: 18, color: Colors.white70)),
                 ],
               ),
             ),

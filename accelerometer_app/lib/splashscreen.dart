@@ -1,11 +1,27 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:amplify_flutter/amplify_flutter.dart';
+import 'package:amplify_auth_cognito/amplify_auth_cognito.dart'; // Add this
+import 'package:amplify_storage_s3/amplify_storage_s3.dart';
+import 'amplifyconfiguration.dart';
 import 'DisplayScreen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _configureAmplify();
   runApp(AccelerometerApp());
 }
 
+Future<void> _configureAmplify() async {
+  try {
+    await Amplify.addPlugin(AmplifyAuthCognito()); // Add Auth plugin
+    await Amplify.addPlugin(AmplifyStorageS3());   // Add Storage plugin
+    await Amplify.configure(amplifyconfig);
+    print('Successfully configured Amplify');
+  } catch (e) {
+    print('Error configuring Amplify: $e');
+  }
+}
 
 class AccelerometerApp extends StatelessWidget {
   @override
@@ -18,7 +34,6 @@ class AccelerometerApp extends StatelessWidget {
   }
 }
 
-// Splash screen widget
 class SplashScreen extends StatefulWidget {
   @override
   _SplashScreenState createState() => _SplashScreenState();
@@ -32,16 +47,11 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-
-    // Set up animation
     _animationController =
         AnimationController(vsync: this, duration: Duration(seconds: 2));
     _fadeAnimation = CurvedAnimation(
         parent: _animationController, curve: Curves.easeInOut);
-
     _animationController.forward();
-
-    // Navigate to DisplayScreen after 3 seconds
     Timer(Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
@@ -74,7 +84,7 @@ class _SplashScreenState extends State<SplashScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Image.asset(
-                  'assets/splashlogo.png', // Your logo image asset
+                  'assets/splashlogo.png',
                   width: 200,
                   height: 200,
                 ),

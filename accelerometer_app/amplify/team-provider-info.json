@@ -1,0 +1,23 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-roadapp-dev-16816-authRole",
+      "UnauthRoleArn": "arn:aws:iam::448049808386:role/amplify-roadapp-dev-16816-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::448049808386:role/amplify-roadapp-dev-16816-authRole",
+      "Region": "us-east-1",
+      "DeploymentBucketName": "amplify-roadapp-dev-16816-deployment",
+      "UnauthRoleName": "amplify-roadapp-dev-16816-unauthRole",
+      "StackName": "amplify-roadapp-dev-16816",
+      "StackId": "arn:aws:cloudformation:us-east-1:448049808386:stack/amplify-roadapp-dev-16816/0c773860-05d8-11f0-b7b3-0e7cb26ba367",
+      "AmplifyAppId": "d2lejtohtecnzs"
+    },
+    "categories": {
+      "auth": {
+        "roadapp46ec116e": {}
+      },
+      "storage": {
+        "fypdatasetbyabdullah": {}
+      }
+    }
+  }
+}
